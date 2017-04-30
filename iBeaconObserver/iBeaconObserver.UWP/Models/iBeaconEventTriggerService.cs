@@ -1,0 +1,166 @@
+﻿using iBeaconObserver.Models;
+using iBeaconObserver.UWP.Utils;
+using Prism.Mvvm;
+using System;
+using System.Collections.Generic;
+using Windows.Devices.Bluetooth.Advertisement;
+
+namespace iBeaconObserver.UWP.Models
+{
+    public class iBeaconEventTriggerService : BindableBase, IiBeaconEventTriggerService
+    {
+        #region PROPERTIES
+
+        private bool _isScanning = false;
+        public bool IsScanning
+        {
+            get { return _isScanning; }
+            private set { SetProperty(ref _isScanning, value); }
+        }
+
+        public List<iBeacon> DetectedBeaconList
+        {
+            get { return new List<iBeacon>(_detectedBeaconDict.Values); }
+        }
+
+        #endregion
+
+
+
+        #region FIELDS
+
+        private Dictionary<string, iBeaconEventHolder> _beaconEventHolderDict;
+        private Dictionary<string, iBeacon> _detectedBeaconDict;
+        private BluetoothLEAdvertisementWatcher _bleAdvWatcher;
+
+        #endregion
+
+
+
+        #region CONSTRUCTOR
+
+        public iBeaconEventTriggerService()
+        {
+            _beaconEventHolderDict = new Dictionary<string, iBeaconEventHolder>();
+            _detectedBeaconDict = new Dictionary<string, iBeacon>();
+            _bleAdvWatcher = new BluetoothLEAdvertisementWatcher();
+            _bleAdvWatcher.Received += bleAdvWatcherReceived;
+        }
+
+        #endregion
+
+
+
+        #region PUBLIC METHODS
+
+        public void AddEvent(Guid uuid, ushort major, ushort minor, short thresholdRssi, int intervalMilliSec, Action function)
+        {
+            //TODO: 非同期メソッドや引数ありのメソッドもセットできるようにしたい
+            iBeaconEventHolder eventHolder = new iBeaconEventHolder(uuid, major, minor);
+
+            if (!_beaconEventHolderDict.ContainsKey(eventHolder.BeaconIdentifyStr))
+            {
+                _beaconEventHolderDict.Add(eventHolder.BeaconIdentifyStr, eventHolder);
+            }
+            _beaconEventHolderDict[eventHolder.BeaconIdentifyStr].AddEvent(thresholdRssi, intervalMilliSec, function);
+        }
+
+
+        public void AddEvent(Guid uuid, ushort major, ushort minor)
+        {
+            iBeaconEventHolder eventHolder = new iBeaconEventHolder(uuid, major, minor);
+
+            if (!_beaconEventHolderDict.ContainsKey(eventHolder.BeaconIdentifyStr))
+            {
+                _beaconEventHolderDict.Add(eventHolder.BeaconIdentifyStr, eventHolder);
+            }
+        }
+
+
+        public void ClearAllEvent()
+        {
+            _beaconEventHolderDict = new Dictionary<string, iBeaconEventHolder>();
+            _detectedBeaconDict = new Dictionary<string, iBeacon>();
+        }
+
+
+        public void StartScan()
+        {
+            if (IsScanning)
+            {
+                return;
+            }
+
+            //TODO: 端末のBluetoothがオフになっているときのハンドリング
+
+            _detectedBeaconDict = new Dictionary<string, iBeacon>();
+            _bleAdvWatcher.Start();
+            IsScanning = true;
+        }
+
+
+        public void StopScan()
+        {
+            if (!IsScanning)
+            {
+                return;
+            }
+            _bleAdvWatcher.Stop();
+            IsScanning = false;
+        }
+
+        #endregion
+
+
+        #region PRIVATE METHODS
+
+        private void bleAdvWatcherReceived(BluetoothLEAdvertisementWatcher s, BluetoothLEAdvertisementReceivedEventArgs e)
+        {
+            iBeacon detectedBeacon = iBeaconUwpUtility.ConvertReceivedDataToBeacon(e);
+            if (detectedBeacon == null || detectedBeacon.Rssi == null)
+            {
+                return;
+            }
+
+            string beaconIdentifier = iBeaconEventHolder.GenerateBeaconIdentifyStr(detectedBeacon.Uuid, detectedBeacon.Major, detectedBeacon.Minor);
+
+            if (!_beaconEventHolderDict.ContainsKey(beaconIdentifier))
+            {
+                return;
+            }
+
+            iBeaconEventHolder eventHolder = _beaconEventHolderDict[beaconIdentifier];
+
+            if (_detectedBeaconDict.ContainsKey(beaconIdentifier))
+            {
+                iBeacon detectedBeaconPrev = _detectedBeaconDict[beaconIdentifier];
+                short? rssiPrev = detectedBeaconPrev.Rssi;
+
+                if (rssiPrev == null || ((short)rssiPrev < detectedBeacon.Rssi))
+                {
+                    eventHolder.ibeacon.Rssi = detectedBeacon.Rssi;
+                    eventHolder.ibeacon.TxPower = detectedBeacon.TxPower;
+                    _detectedBeaconDict[beaconIdentifier] = eventHolder.ibeacon;
+                }
+            }
+            else
+            {
+                eventHolder.ibeacon.Rssi = detectedBeacon.Rssi;
+                eventHolder.ibeacon.TxPower = detectedBeacon.TxPower;
+                _detectedBeaconDict.Add(beaconIdentifier, eventHolder.ibeacon);
+            }
+
+            foreach (var eventDetail in eventHolder.EventList)
+            {
+                if (eventDetail.ThresholdRssi < detectedBeacon.Rssi &&
+                    eventDetail.LastTriggeredDateTime < DateTime.Now.AddMilliseconds(-1 * eventDetail.EventTriggerIntervalMilliSec))
+                {
+                    eventDetail.LastTriggeredDateTime = DateTime.Now;
+                    eventDetail.Function();
+                }
+            }
+        }
+
+        #endregion
+    }
+}
