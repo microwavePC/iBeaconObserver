@@ -161,7 +161,7 @@ namespace iBeaconObserver.iOS.Models
             foreach (var detectedBeacon in e.Beacons)
             {
                 string beaconIdentifier = iBeaconEventHolder.GenerateBeaconIdentifyStr(
-                    new Guid(detectedBeacon.ProximityUuid.ToString()),
+					new Guid(detectedBeacon.ProximityUuid.AsString().ToUpper()),
                     detectedBeacon.Major.UInt16Value,
                     detectedBeacon.Minor.UInt16Value);
 
