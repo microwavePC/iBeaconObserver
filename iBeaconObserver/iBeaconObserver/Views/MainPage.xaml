@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:prism="clr-namespace:Prism.Mvvm;assembly=Prism.Forms"
@@ -28,8 +28,8 @@
 
             <Grid.Margin>
                 <OnPlatform x:TypeArguments="Thickness"
-							iOS="40,20,40,10"
-							Android="40,10,40,10"
+							iOS="20,20,20,10"
+							Android="20,10,20,10"
                             WinPhone="20,10,20,60"/>
             </Grid.Margin>
 
