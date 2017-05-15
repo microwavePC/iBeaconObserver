@@ -195,6 +195,24 @@ namespace iBeaconObserver.ViewModels
 
         private void startScan()
         {
+            if (!_ibeaconEventTriggerService.BluetoothIsAvailableOnThisDevice())
+            {
+                _pageDialogService.DisplayAlertAsync("BeahatTutorial",
+                                                     "この端末はBluetoothをサポートしていません。",
+                                                     "OK");
+                return;
+            }
+
+            if (!_ibeaconEventTriggerService.BluetoothIsEnableOnThisDevice())
+            {
+                _pageDialogService.DisplayAlertAsync("BeahatTutorial",
+                                                     "端末のBluetooth利用設定がオフにされています。" + Environment.NewLine +
+                                                     "Bluetoothの利用設定をオンにしてください。",
+                                                     "OK");
+                _ibeaconEventTriggerService.RequestUserToTurnOnBluetooth();
+                return;
+            }
+
             _ibeaconEventTriggerService.StartScan();
         }
 

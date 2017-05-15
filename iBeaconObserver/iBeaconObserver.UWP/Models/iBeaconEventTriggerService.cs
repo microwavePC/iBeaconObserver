@@ -9,6 +9,7 @@ namespace iBeaconObserver.UWP.Models
 {
     public class iBeaconEventTriggerService : BindableBase, IiBeaconEventTriggerService
     {
+		
         #region PROPERTIES
 
         private bool _isScanning = false;
@@ -26,7 +27,6 @@ namespace iBeaconObserver.UWP.Models
         #endregion
 
 
-
         #region FIELDS
 
         private Dictionary<string, iBeaconEventHolder> _beaconEventHolderDict;
@@ -36,7 +36,6 @@ namespace iBeaconObserver.UWP.Models
         #endregion
 
 
-
         #region CONSTRUCTOR
 
         public iBeaconEventTriggerService()
@@ -44,14 +43,51 @@ namespace iBeaconObserver.UWP.Models
             _beaconEventHolderDict = new Dictionary<string, iBeaconEventHolder>();
             _detectedBeaconDict = new Dictionary<string, iBeacon>();
             _bleAdvWatcher = new BluetoothLEAdvertisementWatcher();
+            _bleAvailabilityChecker = new BluetoothLEAdvertisementWatcher();
+
             _bleAdvWatcher.Received += bleAdvWatcherReceived;
+            _bleAvailabilityChecker.Received += dummyBleAdvWatcherReceived;
         }
 
         #endregion
 
 
-
         #region PUBLIC METHODS
+
+		public bool BluetoothIsAvailableOnThisDevice()
+		{
+			return true;
+		}
+
+
+		public bool BluetoothIsEnableOnThisDevice()
+		{
+			_bleAvailabilityChecker.Start();
+
+			var task = Task.Delay(50);
+			task.Wait();
+
+			if (_bleAvailabilityChecker.Status == BluetoothLEAdvertisementWatcherStatus.Started)
+			{
+				_bleAvailabilityChecker.Stop();
+				return true;
+			}
+			else
+			{
+				_bleAvailabilityChecker.Stop();
+				return false;
+			}
+		}
+
+	
+		public void RequestUserToTurnOnBluetooth()
+		{
+			if (!BluetoothIsAvailableOnThisDevice())
+			{
+				throw new BluetoothUnsupportedException("This device does not support Bluetooth.");
+			}
+		}
+
 
         public void AddEvent(Guid uuid, ushort major, ushort minor, short thresholdRssi, int intervalMilliSec, Action function)
         {
@@ -86,12 +122,19 @@ namespace iBeaconObserver.UWP.Models
 
         public void StartScan()
         {
+            if (!BluetoothIsAvailableOnThisDevice())
+            {
+                throw new BluetoothUnsupportedException("This device does not support Bluetooth.");
+            }
+
+            if (!BluetoothIsEnableOnThisDevice())
+            {
+                throw new BluetoothTurnedOffException("Bluetooth service on this device is turned off.");
+            }
             if (IsScanning)
             {
                 return;
             }
-
-            //TODO: 端末のBluetoothがオフになっているときのハンドリング
 
             _detectedBeaconDict = new Dictionary<string, iBeacon>();
             _bleAdvWatcher.Start();
@@ -162,5 +205,6 @@ namespace iBeaconObserver.UWP.Models
         }
 
         #endregion
+
     }
 }

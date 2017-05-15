@@ -5,11 +5,13 @@ using Prism.Mvvm;
 using System;
 using System.Collections.Generic;
 using UIKit;
+using CoreBluetooth;
 
 namespace iBeaconObserver.iOS.Models
 {
     public class iBeaconEventTriggerService : BindableBase, IiBeaconEventTriggerService
     {
+		
         #region PROPERTIES
 
         private bool _isScanning = false;
@@ -27,12 +29,15 @@ namespace iBeaconObserver.iOS.Models
         #endregion
 
 
-
         #region FIELDS
 
         private Dictionary<string, iBeaconEventHolder> _beaconEventHolderDict;
         private Dictionary<string, iBeacon> _detectedBeaconDict;
-        private CLLocationManager _locationManager;
+		private CLLocationManager _locationManager;
+		private CLLocationManager _locationAvailabilityChecker;
+		private bool _canUseLocation;
+		private CBCentralManager _bluetoothAvailabilityChecker;
+        private CBCentralManagerState _bluetoothAvailability;
 
         #endregion
 
@@ -45,18 +50,84 @@ namespace iBeaconObserver.iOS.Models
             _beaconEventHolderDict = new Dictionary<string, iBeaconEventHolder>();
             _detectedBeaconDict = new Dictionary<string, iBeacon>();
             _locationManager = new CLLocationManager();
+            _locationAvailabilityChecker = new CLLocationManager();
+			_canUseLocation = true;
+            _bluetoothAvailabilityChecker = new CBCentralManager();
+			_bluetoothAvailability = CBCentralManagerState.Unknown;
 
-            if (UIDevice.CurrentDevice.CheckSystemVersion(8, 0))
+            _locationManager.DidRangeBeacons += didRangeBeacons;
+
+            _locationAvailabilityChecker.RangingBeaconsDidFailForRegion += (s, e) =>
             {
-                _locationManager.RequestWhenInUseAuthorization();
-            }
+                switch (e.Error.Code)
+                {
+                    case (long)CLError.Denied:
+                    case (long)CLError.RangingFailure:
+                        _canUseLocation = false;
+                        return;
+                    default:
+                        return;
+                }
+            };
+
+            _locationAvailabilityChecker.AuthorizationChanged += (s, e) =>
+            {
+                switch (e.Status)
+                {
+                    case CLAuthorizationStatus.AuthorizedAlways:
+                    case CLAuthorizationStatus.AuthorizedWhenInUse:
+                        _canUseLocation = true;
+                        return;
+                    case CLAuthorizationStatus.Denied:
+                        _canUseLocation = false;
+                        return;
+                    default:
+                        return;
+                }
+            };
+
+            _bluetoothAvailabilityChecker.UpdatedState += (s, e) =>
+            {
+                _bluetoothAvailability = ((CBCentralManager)s).State;
+            };
         }
 
         #endregion
 
 
+		#region PUBLIC METHODS
 
-        #region PUBLIC METHODS
+		public bool BluetoothIsAvailableOnThisDevice()
+		{
+			bool locationServiceSupported = CLLocationManager.IsMonitoringAvailable(typeof(CLBeaconRegion));
+			bool bluetoothSupported = !(_bluetoothAvailability == CBCentralManagerState.Unsupported);
+
+			return locationServiceSupported && bluetoothSupported;
+		}
+
+
+		public bool BluetoothIsEnableOnThisDevice()
+		{
+			if (!BluetoothIsAvailableOnThisDevice())
+			{
+				return false;
+			}
+
+			return _canUseLocation && (_bluetoothAvailability == CBCentralManagerState.PoweredOn);
+		}
+
+
+		public void RequestUserToTurnOnBluetooth()
+		{
+			if (!BluetoothIsAvailableOnThisDevice())
+			{
+				throw new Exception("This device does not support Bluetooth.");
+			}
+
+			new CLLocationManager().RequestWhenInUseAuthorization();
+			new CBCentralManager(null, null, new CBCentralInitOptions() { ShowPowerAlert = true });
+        }
+
 
         public void AddEvent(Guid uuid, ushort major, ushort minor, short thresholdRssi, int intervalMilliSec, Action func)
         {
@@ -106,13 +177,22 @@ namespace iBeaconObserver.iOS.Models
 
         public void StartScan()
         {
+            if (!BluetoothIsAvailableOnThisDevice())
+            {
+                throw new Exception("This device does not support Bluetooth.");
+            }
+
+            if (!CLLocationManager.RegionMonitoringEnabled)
+            {
+                throw new Exception("Bluetooth service on this device is turned off.");
+            }
+
             if (IsScanning)
             {
                 return;
             }
 
             _detectedBeaconDict = new Dictionary<string, iBeacon>();
-            _locationManager.DidRangeBeacons += didRangeBeacons;
 
             foreach (var eventHolder in _beaconEventHolderDict)
             {
@@ -153,7 +233,6 @@ namespace iBeaconObserver.iOS.Models
         #endregion
 
 
-
         #region PRIVATE METHODS
 
         private void didRangeBeacons(object s, CLRegionBeaconsRangedEventArgs e)
@@ -187,7 +266,10 @@ namespace iBeaconObserver.iOS.Models
                 else
                 {
                     eventHolder.ibeacon.Rssi = (short)detectedBeacon.Rssi;
-					eventHolder.ibeacon.EstimatedDistanceMeter = detectedBeacon.Accuracy;
+					if (detectedBeacon.Accuracy > 0)
+					{
+						eventHolder.ibeacon.EstimatedDistanceMeter = detectedBeacon.Accuracy;
+					}
                     _detectedBeaconDict.Add(beaconIdentifier, eventHolder.ibeacon);
                 }
 
@@ -204,5 +286,6 @@ namespace iBeaconObserver.iOS.Models
         }
 
         #endregion
+
     }
 }

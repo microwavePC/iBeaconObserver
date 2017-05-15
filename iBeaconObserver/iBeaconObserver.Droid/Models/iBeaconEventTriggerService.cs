@@ -6,11 +6,15 @@ using Prism.Mvvm;
 using System;
 using System.Collections.Generic;
 using Android.OS;
+using Android.Content;
+using Xamarin.Forms;
+using Android.App;
 
 namespace iBeaconObserver.Droid.Models
 {
 	public class iBeaconEventTriggerService : BindableBase, IiBeaconEventTriggerService
 	{
+		
 		#region PRERTIES
 
 		private bool _isScanning = false;
@@ -38,7 +42,6 @@ namespace iBeaconObserver.Droid.Models
 		#endregion
 
 
-
 		#region FIELDS
 
 		private BluetoothManager _btManager;
@@ -57,14 +60,6 @@ namespace iBeaconObserver.Droid.Models
 
 		public iBeaconEventTriggerService()
 		{
-			/*
-            _btManager = (BluetoothManager)Android.App.Application.Context.GetSystemService("bluetooth");
-            _btAdapter = _btManager.Adapter;
-            _bleScanner = _btAdapter.BluetoothLeScanner;
-            _scanCallback = new BleScanCallback();
-            */
-
-			// OS•–©`•∏•Á•Û§Ú»°µ√
 			OS_VER = Build.VERSION.SdkInt;
 
 			_btManager = (BluetoothManager)Android.App.Application.Context.GetSystemService("bluetooth");
@@ -86,8 +81,36 @@ namespace iBeaconObserver.Droid.Models
 		#endregion
 
 
-
 		#region PUBLIC METHODS
+
+		public bool BluetoothIsAvailableOnThisDevice()
+		{
+			return !(_btAdapter == null);
+		}
+
+
+		public bool BluetoothIsEnableOnThisDevice()
+		{
+			if (!BluetoothIsAvailableOnThisDevice())
+			{
+				return false;
+			}
+
+			return _btAdapter.IsEnabled;
+		}
+
+
+		public void RequestUserToTurnOnBluetooth()
+		{
+			if (!BluetoothIsAvailableOnThisDevice())
+			{
+				throw new Exception("This device does not support Bluetooth.");
+			}
+
+			Intent btTurnOnIntent = new Intent(BluetoothAdapter.ActionRequestEnable);
+			(Forms.Context as Activity).StartActivity(btTurnOnIntent);
+		}
+
 
 		public void AddEvent(Guid uuid, ushort major, ushort minor, short thresholdRssi, int intervalMilliSec, Action function)
 		{
@@ -158,7 +181,7 @@ namespace iBeaconObserver.Droid.Models
 			if (OS_VER < BuildVersionCodes.Lollipop)
 			{
 				_scanCallbackOld.DetectedBeaconDict = new Dictionary<string, iBeacon>();
-				_btAdapter?.StartLeScan(_scanCallbackOld);
+				_btAdapter.StartLeScan(_scanCallbackOld);
 			}
 			else
 			{
